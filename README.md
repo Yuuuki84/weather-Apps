@@ -3,7 +3,7 @@
 シンプルで美しい天気 + ニュース Web App です。
 都市名または現在地から最新の天気情報を取得し、カテゴリ別ニュースと AI アシスタントを提供します。
 
-**公開 URL:** https://yuuuki84.github.io/Weather-2-App/
+**公開 URL:** https://yuuuki84.github.io/weather-Apps/
 
 ---
 
