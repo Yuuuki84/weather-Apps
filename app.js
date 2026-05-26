@@ -1981,7 +1981,7 @@ async function getWeatherByGeo() {
   }, { enableHighAccuracy: false, timeout: 8000 });
 }
 
-// ===== ニュース（GNews API） =====
+// ===== ニュース（Google News RSS） =====
 
 const CATEGORY_LABEL = {
   general:'トップ', domestic:'国内', world:'国際', politics:'政治', economy:'経済',
@@ -1993,57 +1993,8 @@ const CATEGORY_LABEL = {
 const newsCache = {};
 const CACHE_TTL = 15 * 60 * 1000;
 
-
-async function fetchGNews(category) {
-  const now = Date.now();
-  if (newsCache[category] && (now - newsCache[category].ts) < CACHE_TTL) return newsCache[category].articles;
-
-  if (!CHAT_API_URL || CHAT_API_URL === 'YOUR_CHAT_WORKER_URL') throw new Error('Worker URL未設定');
-
-  const res = await fetch(CHAT_API_URL + '/api/news?category=' + category, {
-    signal: timeoutSignal(20000),
-  });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  if (!Array.isArray(data.articles)) throw new Error(data.errors?.[0] || 'データ取得失敗');
-
-  const articles = data.articles.map(item => ({
-    title:       item.title?.trim() || '',
-    description: item.description?.trim() || '',
-    url:         item.url || '',
-    image:       item.image || '',
-    source:      item.source?.name || 'GNews',
-    sourceIcon:  '',
-    publishedAt: item.publishedAt || '',
-    lang:        'ja',
-  }));
-
-  newsCache[category] = { ts: now, articles };
-  try { localStorage.setItem('sora_news_offline_' + category, JSON.stringify({ ts: now, articles })); } catch (e) { console.warn('localStorage 書き込み失敗 (news offline):', e); }
-  return articles;
-}
-
-// 1次: Yahoo Japan RSS（カテゴリ別・30〜60分更新）
+// Google News RSS（rss2json.com 経由で CORS 回避）
 const RSS_FEEDS = {
-  general:       'https://news.yahoo.co.jp/rss/topics/top-picks.xml',
-  domestic:      'https://news.yahoo.co.jp/rss/topics/domestic.xml',
-  world:         'https://news.yahoo.co.jp/rss/topics/world.xml',
-  politics:      'https://news.yahoo.co.jp/rss/topics/politics.xml',
-  economy:       'https://news.yahoo.co.jp/rss/topics/economy.xml',
-  technology:    'https://news.yahoo.co.jp/rss/topics/it.xml',
-  science:       'https://news.yahoo.co.jp/rss/topics/science.xml',
-  sports:        'https://news.yahoo.co.jp/rss/topics/sports.xml',
-  entertainment: 'https://news.yahoo.co.jp/rss/topics/entertainment.xml',
-  health:        'https://news.yahoo.co.jp/rss/topics/health.xml',
-  business:      'https://news.yahoo.co.jp/rss/topics/economy.xml',
-  gourmet:       'https://news.yahoo.co.jp/rss/topics/gourmet.xml',
-  travel:        'https://news.yahoo.co.jp/rss/topics/travel.xml',
-  local:         'https://news.yahoo.co.jp/rss/topics/local.xml',
-  disaster:      'https://news.yahoo.co.jp/rss/topics/disaster.xml',
-};
-// 2次フォールバック: Google News RSS
-const RSS_FEEDS_FALLBACK = {
   general:       'https://news.google.com/rss?hl=ja&gl=JP&ceid=JP:ja',
   domestic:      'https://news.google.com/rss/headlines/section/topic/NATION?hl=ja&gl=JP&ceid=JP:ja',
   world:         'https://news.google.com/rss/headlines/section/topic/WORLD?hl=ja&gl=JP&ceid=JP:ja',
@@ -2053,12 +2004,12 @@ const RSS_FEEDS_FALLBACK = {
   science:       'https://news.google.com/rss/headlines/section/topic/SCIENCE?hl=ja&gl=JP&ceid=JP:ja',
   sports:        'https://news.google.com/rss/headlines/section/topic/SPORTS?hl=ja&gl=JP&ceid=JP:ja',
   entertainment: 'https://news.google.com/rss/headlines/section/topic/ENTERTAINMENT?hl=ja&gl=JP&ceid=JP:ja',
-  health:        'https://news.google.com/rss/headlines/section/topic/HEALTH?hl=ja&gl=JP&ceid=JP:ja',
+  health:        'https://news.google.com/rss/search?q=%E5%81%A5%E5%BA%B7+OR+%E5%8C%BB%E7%99%82&hl=ja&gl=JP&ceid=JP:ja',
   business:      'https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=ja&gl=JP&ceid=JP:ja',
   gourmet:       'https://news.google.com/rss/search?q=%E3%82%B0%E3%83%AB%E3%83%A1+OR+%E9%A3%B2%E9%A3%9F%E5%BA%97&hl=ja&gl=JP&ceid=JP:ja',
   travel:        'https://news.google.com/rss/search?q=%E6%97%85%E8%A1%8C+OR+%E8%A6%B3%E5%85%89&hl=ja&gl=JP&ceid=JP:ja',
   local:         'https://news.google.com/rss/headlines/section/topic/NATION?hl=ja&gl=JP&ceid=JP:ja',
-  disaster:      'https://news.google.com/rss/search?q=%E7%81%BD%E5%AE%B3+OR+%E5%9C%B0%E9%9C%87+OR+%E5%8F%B0%E9%A2%A8+OR+%E6%B4%AA%E6%B0%B4&hl=ja&gl=JP&ceid=JP%3Aja',
+  disaster:      'https://news.google.com/rss/search?q=%E7%81%BD%E5%AE%B3+OR+%E5%9C%B0%E9%9C%87+OR+%E5%8F%B0%E9%A2%A8+OR+%E6%B4%AA%E6%B0%B4&hl=ja&gl=JP&ceid=JP:ja',
 };
 
 // rss2json.com 経由で RSS を JSON に変換（CORS フリー）
@@ -2080,17 +2031,10 @@ async function tryRss2json(url) {
   }));
 }
 
-// RSS フェッチ: Yahoo RSS → Google RSS フォールバック
 async function fetchRSSNews(category) {
-  const primaryUrl = RSS_FEEDS[category];
-  if (!primaryUrl) throw new Error('RSS未設定');
-  try {
-    return await tryRss2json(primaryUrl);
-  } catch {
-    const fallbackUrl = RSS_FEEDS_FALLBACK[category];
-    if (!fallbackUrl) throw new Error('記事が見つかりませんでした');
-    return await tryRss2json(fallbackUrl);
-  }
+  const url = RSS_FEEDS[category];
+  if (!url) throw new Error('RSS未設定');
+  return await tryRss2json(url);
 }
 
 async function fetchAndRenderNews(category) {
